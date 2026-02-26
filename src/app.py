@@ -8,7 +8,9 @@ for extracurricular activities at Mergington High School.
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 import os
+import json
 from pathlib import Path
 
 app = FastAPI(title="Mergington High School API",
@@ -18,6 +20,19 @@ app = FastAPI(title="Mergington High School API",
 current_dir = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
           "static")), name="static")
+
+# Load teacher credentials from JSON file
+def load_teacher_credentials():
+    credentials_path = Path(__file__).parent / "teachers.json"
+    with open(credentials_path, "r") as f:
+        return json.load(f)
+
+TEACHER_CREDENTIALS = load_teacher_credentials()
+
+# Pydantic model for login
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
 # In-memory activity database
 activities = {
@@ -83,13 +98,23 @@ def root():
     return RedirectResponse(url="/static/index.html")
 
 
+@app.post("/login")
+def login(request: LoginRequest):
+    """Authenticate a teacher with username and password"""
+    for teacher in TEACHER_CREDENTIALS["teachers"]:
+        if teacher["username"] == request.username and teacher["password"] == request.password:
+            return {"success": True, "message": f"Welcome, {request.username}!"}
+    
+    raise HTTPException(status_code=401, detail="Invalid username or password")
+
+
 @app.get("/activities")
 def get_activities():
     return activities
 
 
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
+def signup_for_activity(activity_name: str, email: str, username: str = None):
     """Sign up a student for an activity"""
     # Validate activity exists
     if activity_name not in activities:
@@ -111,7 +136,7 @@ def signup_for_activity(activity_name: str, email: str):
 
 
 @app.delete("/activities/{activity_name}/unregister")
-def unregister_from_activity(activity_name: str, email: str):
+def unregister_from_activity(activity_name: str, email: str, username: str = None):
     """Unregister a student from an activity"""
     # Validate activity exists
     if activity_name not in activities:
